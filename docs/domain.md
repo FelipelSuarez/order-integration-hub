@@ -7,42 +7,46 @@
 - **Item** — produto + quantidade dentro de um Pedido. Não existe fora de um Pedido.
 - **Cliente** — referência ao cadastro do legado (`ClienteId`). O hub não duplica o
   cadastro, só valida a referência.
-- **Status** — `Recebido → Validado → Confirmado` (sucesso) ou `Recebido/Validado →
-  Rejeitado` (falha, com motivo). Terminal: `Confirmado` ou `Rejeitado`.
+- **Status** — estados da saga (ZER-183), no máximo 4: `Recebido → Validando →
+  Reservado | Rejeitado`. Terminal: `Reservado` (sucesso) ou `Rejeitado` (falha,
+  com motivo).
 - **Reserva de Estoque** — resultado da consulta ao legado confirmando quantidade
   disponível para cada Item do Pedido. Não é decidida pelo hub; é reportada por ele.
 
 ## Eventos de domínio
 
-O fluxo é uma saga de dois passos dentro do próprio `OrderIntake` — sem terceiro
-serviço (ADR-0001). Cada passo reage ao evento anterior via consumer do MassTransit.
+O fluxo é uma saga interna dentro do próprio `OrderIntake` — sem terceiro serviço
+(ADR-0001) e sem SOAP no request path (ZER-183): a API só persiste e responde;
+um consumer do MassTransit processa a validação depois.
 
-1. **`PedidoRecebido`** — Pedido persistido com `Status = Recebido`. Dispara a
-   validação contra o legado (cliente existe, itens existem).
-2. **`PedidoValidado`** — legado confirmou cliente e itens. `Status = Validado`.
-   Dispara a reserva de estoque.
+1. **`PedidoRecebido`** — Pedido persistido com `Status = Recebido`. Dispara o
+   consumer que entra em `Validando` e chama o legado (cliente, itens, estoque).
+2. **`PedidoValidado`** — legado confirmou cliente e itens.
 3. **`EstoqueReservado`** — legado confirmou quantidade disponível para todos os
-   itens. `Status = Confirmado`. Terminal, sucesso.
-4. **`PedidoRejeitado`** — legado recusou em qualquer um dos dois passos acima
-   (cliente/item inválido, ou estoque insuficiente). Carrega o motivo. `Status =
-   Rejeitado`. Terminal, falha.
+   itens. `Status = Reservado`. Terminal, sucesso.
+4. **`PedidoRejeitado`** — legado recusou (cliente/item inválido, estoque
+   insuficiente, ou timeout — um único timeout de N minutos sem resposta do
+   legado). Carrega o motivo. `Status = Rejeitado`. Terminal, falha.
 
-Cada consumer é idempotente (ADR-0007): reprocessar `PedidoRecebido` ou
-`PedidoValidado` não pode gerar reserva ou rejeição duplicada.
+`PedidoValidado` e `EstoqueReservado` são emitidos na mesma passagem por
+`Validando` — não viram estados próprios da state machine, só eventos, para
+manter os 4 estados no máximo (ZER-183). Cada consumer é idempotente
+(ADR-0007): reprocessar `PedidoRecebido` não pode gerar reserva ou rejeição
+duplicada.
 
 ## Fronteira de consistência
 
 **Transacional** (mesma transação SQL Server, outbox incluso — ADR-0003):
 - Criação do Pedido + Itens + outbox de `PedidoRecebido`.
-- Cada transição de `Status` + outbox do evento correspondente (`PedidoValidado`,
-  `EstoqueReservado` ou `PedidoRejeitado`).
+- Cada transição de `Status` da saga (`EntityFrameworkSagaRepository`) + outbox
+  dos eventos correspondentes, na mesma transação.
 
 A chamada SOAP ao legado acontece **antes** da transação, fora dela — é consulta,
-não escrita distribuída. O resultado da chamada decide qual evento a transação grava.
+não escrita distribuída. O resultado da chamada decide o que a transação grava.
 
 **Eventual:**
-- Cada salto broker → consumer dentro da própria saga do `OrderIntake` (o hub fica
-  em `Recebido` ou `Validado` por um tempo indeterminado enquanto aguarda o legado).
+- O salto broker → consumer que dispara `Validando` (o pedido fica em `Recebido`
+  por um tempo indeterminado, ou até o timeout, enquanto aguarda o legado).
 - O modelo de leitura do `OrderProjection`, sempre atrasado em relação à escrita.
 
 ## Contrato REST de entrada
@@ -58,7 +62,11 @@ requestBody:
   required: [clienteId, itens]   # itens: mínimo 1
 responses:
   202:
-    description: Pedido aceito, processamento é assíncrono (Status = Recebido)
+    description: Pedido aceito, processamento é assíncrono (Status = Recebido).
+      Não há aceite síncrono — quem consome recebe 202 e precisa consultar o
+      status (custo real de contrato, ver ADR-0011).
+    headers:
+      Location: /pedidos/{pedidoId}   # consulta de status
     body: { pedidoId: guid, status: "Recebido" }
   400:
     description: payload inválido (não confunda com PedidoRejeitado, que é regra
