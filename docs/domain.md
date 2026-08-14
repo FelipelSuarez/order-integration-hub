@@ -43,8 +43,11 @@ duplicada.
 - Cada transição de `Status` da saga (estado persistido junto com o outbox) +
   outbox dos eventos correspondentes, na mesma transação.
 
-A chamada SOAP ao legado acontece **antes** da transação, fora dela — é consulta,
-não escrita distribuída. O resultado da chamada decide o que a transação grava.
+A chamada SOAP ao legado acontece **antes** da transação, fora dela — não é
+atômica com a escrita SQL/outbox, e reservar estoque tem efeito colateral real
+no legado (não é uma consulta pura). O resultado da chamada decide o que a
+transação grava; se a transação falhar depois, a reserva no legado pode ficar
+órfã (janela aceita nesta fase; compensação fica fora de escopo por ora).
 
 **Eventual:**
 - O salto broker → consumer que dispara `Validando` (o pedido fica em `Recebido`
@@ -68,6 +71,7 @@ POST /pedidos:
               minItems: 1
               items:
                 type: object
+                required: [produtoId, quantidade]
                 properties:
                   produtoId: { type: string }
                   quantidade: { type: integer, minimum: 1 }
