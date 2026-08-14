@@ -7,7 +7,7 @@
 - **Item** — produto + quantidade dentro de um Pedido. Não existe fora de um Pedido.
 - **Cliente** — referência ao cadastro do legado (`ClienteId`). O hub não duplica o
   cadastro, só valida a referência.
-- **Status** — estados da saga (ZER-183), no máximo 4: `Recebido → Validando →
+- **Status** — estados da saga, no máximo 4: `Recebido → Validando →
   Reservado | Rejeitado`. Terminal: `Reservado` (sucesso) ou `Rejeitado` (falha,
   com motivo).
 - **Reserva de Estoque** — resultado da consulta ao legado confirmando quantidade
@@ -16,8 +16,8 @@
 ## Eventos de domínio
 
 O fluxo é uma saga interna dentro do próprio `OrderIntake` — sem terceiro serviço
-(ADR-0001) e sem SOAP no request path (ZER-183): a API só persiste e responde;
-um consumer do MassTransit processa a validação depois.
+(ADR-0001) e sem SOAP no request path: a API só persiste e responde; um consumer
+do MassTransit processa a validação depois.
 
 1. **`PedidoRecebido`** — Pedido persistido com `Status = Recebido`. Dispara o
    consumer que entra em `Validando` e chama o legado (cliente, itens, estoque).
@@ -30,7 +30,7 @@ um consumer do MassTransit processa a validação depois.
 
 `PedidoValidado` e `EstoqueReservado` são emitidos na mesma passagem por
 `Validando` — não viram estados próprios da state machine, só eventos, para
-manter os 4 estados no máximo (ZER-183). Cada consumer é idempotente
+manter os 4 estados no máximo. Cada consumer é idempotente
 (ADR-0007): reprocessar `PedidoRecebido` não pode gerar reserva ou rejeição
 duplicada.
 
