@@ -10,8 +10,9 @@
 - **Status** — estados da saga, no máximo 4: `Recebido → Validando →
   Reservado | Rejeitado`. Terminal: `Reservado` (sucesso) ou `Rejeitado` (falha,
   com motivo).
-- **Reserva de Estoque** — resultado da consulta ao legado confirmando quantidade
-  disponível para cada Item do Pedido. Não é decidida pelo hub; é reportada por ele.
+- **Reserva de Estoque** — efeito no legado: quantidade de cada Item do Pedido
+  efetivamente retida (não apenas consultada) em nome do Pedido. A decisão é do
+  legado; o hub só reporta o resultado via evento.
 
 ## Eventos de domínio
 
@@ -22,8 +23,9 @@ do MassTransit processa a validação depois.
 1. **`PedidoRecebido`** — Pedido persistido com `Status = Recebido`. Dispara o
    consumer que entra em `Validando` e chama o legado (cliente, itens, estoque).
 2. **`PedidoValidado`** — legado confirmou cliente e itens.
-3. **`EstoqueReservado`** — legado confirmou quantidade disponível para todos os
-   itens. `Status = Reservado`. Terminal, sucesso.
+3. **`EstoqueReservado`** — legado reteve a quantidade pedida de todos os itens
+   (reserva efetivada, não só consulta de disponibilidade). `Status = Reservado`.
+   Terminal, sucesso.
 4. **`PedidoRejeitado`** — legado recusou (cliente/item inválido, estoque
    insuficiente, ou timeout — um único timeout de N minutos sem resposta do
    legado). Carrega o motivo. `Status = Rejeitado`. Terminal, falha.
@@ -38,8 +40,8 @@ duplicada.
 
 **Transacional** (mesma transação SQL Server, outbox incluso — ADR-0003):
 - Criação do Pedido + Itens + outbox de `PedidoRecebido`.
-- Cada transição de `Status` da saga (`EntityFrameworkSagaRepository`) + outbox
-  dos eventos correspondentes, na mesma transação.
+- Cada transição de `Status` da saga (estado persistido junto com o outbox) +
+  outbox dos eventos correspondentes, na mesma transação.
 
 A chamada SOAP ao legado acontece **antes** da transação, fora dela — é consulta,
 não escrita distribuída. O resultado da chamada decide o que a transação grava.
@@ -52,25 +54,42 @@ não escrita distribuída. O resultado da chamada decide o que a transação gra
 ## Contrato REST de entrada
 
 ```yaml
-POST /pedidos
-requestBody:
-  application/json:
-    clienteId: string   # obrigatório
-    itens:
-      - produtoId: string
-        quantidade: integer   # > 0
-  required: [clienteId, itens]   # itens: mínimo 1
-responses:
-  202:
-    description: Pedido aceito, processamento é assíncrono (Status = Recebido).
-      Não há aceite síncrono — quem consome recebe 202 e precisa consultar o
-      status (custo real de contrato, ver ADR-0011).
-    headers:
-      Location: /pedidos/{pedidoId}   # consulta de status
-    body: { pedidoId: guid, status: "Recebido" }
-  400:
-    description: payload inválido (não confunda com PedidoRejeitado, que é regra
-      de negócio validada pelo legado)
+POST /pedidos:
+  requestBody:
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [clienteId, itens]
+          properties:
+            clienteId: { type: string }
+            itens:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                properties:
+                  produtoId: { type: string }
+                  quantidade: { type: integer, minimum: 1 }
+  responses:
+    "202":
+      description: >
+        Pedido aceito, processamento é assíncrono (Status = Recebido). Não há
+        aceite síncrono — o cliente que chamou a API recebe 202 e precisa
+        consultar o status depois (custo real de contrato, ver ADR-0011).
+      headers:
+        Location: { description: /pedidos/{pedidoId}, schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              pedidoId: { type: string, format: uuid }
+              status: { type: string, enum: [Recebido] }
+    "400":
+      description: >
+        payload inválido (não confunda com PedidoRejeitado, que é regra de
+        negócio validada pelo legado)
 ```
 
 Consulta de status é responsabilidade do `OrderProjection` (`GET` sobre o read
