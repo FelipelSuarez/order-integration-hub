@@ -8,4 +8,10 @@
     <Project Path="src/OrderProjection.Worker/OrderProjection.Worker.csproj" />
     <Project Path="src/Shared.Contracts/Shared.Contracts.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OrderIntake.IntegrationTests/OrderIntake.IntegrationTests.csproj" />
+    <Project Path="tests/OrderIntake.UnitTests/OrderIntake.UnitTests.csproj" />
+    <Project Path="tests/OrderProjection.IntegrationTests/OrderProjection.IntegrationTests.csproj" />
+    <Project Path="tests/OrderProjection.UnitTests/OrderProjection.UnitTests.csproj" />
+  </Folder>
 </Solution>
