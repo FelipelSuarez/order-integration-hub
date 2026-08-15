@@ -4,5 +4,6 @@
     <Project Path="src/OrderIntake.Application/OrderIntake.Application.csproj" />
     <Project Path="src/OrderIntake.Domain/OrderIntake.Domain.csproj" />
     <Project Path="src/OrderIntake.Infrastructure/OrderIntake.Infrastructure.csproj" />
+    <Project Path="src/Shared.Contracts/Shared.Contracts.csproj" />
   </Folder>
 </Solution>
