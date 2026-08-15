@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/OrderIntake.Application/OrderIntake.Application.csproj" />
     <Project Path="src/OrderIntake.Domain/OrderIntake.Domain.csproj" />
+    <Project Path="src/OrderIntake.Infrastructure/OrderIntake.Infrastructure.csproj" />
   </Folder>
 </Solution>

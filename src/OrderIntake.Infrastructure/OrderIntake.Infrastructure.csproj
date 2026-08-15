@@ -1,0 +1,8 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OrderIntake.Application\OrderIntake.Application.csproj" />
+    <ProjectReference Include="..\OrderIntake.Domain\OrderIntake.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
