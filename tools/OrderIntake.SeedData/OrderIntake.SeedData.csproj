@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Bogus" Version="35.6.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OrderIntake.Domain\OrderIntake.Domain.csproj" />
+    <ProjectReference Include="..\..\src\OrderIntake.Infrastructure\OrderIntake.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
