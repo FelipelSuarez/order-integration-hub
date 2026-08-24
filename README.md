@@ -20,8 +20,19 @@ src/
   Shared.Contracts/           contratos de evento versionados
 tests/
   *.UnitTests / *.IntegrationTests
+tools/
+  OrderIntake.SeedData/       gera pedidos em volume pros testes de performance da S2
 docs/
   adr/  domain.md
+```
+
+## Seed de dados
+
+`tools/OrderIntake.SeedData` gera 100k+ pedidos direto no SQL Server, pros testes de
+performance da S2. Não roda em CI nem em `dotnet test` — é sob demanda:
+
+```bash
+dotnet run --project tools/OrderIntake.SeedData -- "<connection-string>"
 ```
 
 `OrderIntake.Domain` não referencia nada de infraestrutura — é verificável olhando
