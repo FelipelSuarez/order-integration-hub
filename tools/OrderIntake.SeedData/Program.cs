@@ -36,7 +36,7 @@ while (inseridos < totalPedidos)
 
     for (var i = 0; i < tamanhoDoLoteAtual; i++)
     {
-        await context.Pedidos.AddAsync(GerarPedido(faker));
+        context.Pedidos.Add(GerarPedido(faker));
     }
 
     await context.SaveChangesAsync();

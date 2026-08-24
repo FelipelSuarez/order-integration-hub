@@ -23,6 +23,6 @@ public sealed class PedidoConfiguration : IEntityTypeConfiguration<Pedido>
             .OnDelete(DeleteBehavior.Cascade)
             .IsRequired();
 
-        builder.Navigation(p => p.Itens).UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder.Navigation(p => p.Itens).HasField("_itens").UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

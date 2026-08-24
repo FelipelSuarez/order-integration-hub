@@ -19,7 +19,7 @@ public sealed class PedidoConcorrenciaTests(SqlServerContainerFixture fixture)
 
         await using (var setupContext = new OrderIntakeDbContext(options))
         {
-            await setupContext.Pedidos.AddAsync(pedido);
+            setupContext.Pedidos.Add(pedido);
             await setupContext.SaveChangesAsync();
         }
 
