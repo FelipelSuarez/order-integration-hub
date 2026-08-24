@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OrderIntake.Application.Pedidos;
 using OrderIntake.Infrastructure.Persistence;
 
 namespace OrderIntake.Infrastructure;
@@ -11,6 +12,8 @@ public static class DependencyInjection
     {
         services.AddDbContext<OrderIntakeDbContext>(options =>
             options.UseSqlServer(configuration.GetConnectionString("OrderIntakeDb")));
+
+        services.AddScoped<IPedidoRepository, PedidoRepository>();
 
         return services;
     }
