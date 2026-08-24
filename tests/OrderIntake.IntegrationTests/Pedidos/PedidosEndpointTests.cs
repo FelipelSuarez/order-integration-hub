@@ -46,4 +46,17 @@ public sealed class PedidosEndpointTests(SqlServerContainerFixture fixture)
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
+
+    [Fact]
+    public async Task PostPedidos_ComItensNulo_Retorna400EmVezDe500()
+    {
+        await using var factory = new OrderIntakeApiFactory(fixture.ConnectionString);
+        using var client = factory.CreateClient();
+
+        var request = new RegistrarPedidoRequest(Guid.NewGuid(), null!);
+
+        var response = await client.PostAsJsonAsync("/pedidos", request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }

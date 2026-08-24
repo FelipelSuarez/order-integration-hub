@@ -8,6 +8,11 @@ public static class PedidoEndpoints
     {
         app.MapPost("/pedidos", async (RegistrarPedidoRequest request, RegistrarPedidoUseCase useCase, CancellationToken cancellationToken) =>
         {
+            if (request.Itens is null || request.Itens.Any(i => i is null))
+            {
+                return Results.BadRequest(new { erro = "Itens não pode ser nulo nem conter itens nulos." });
+            }
+
             var itens = request.Itens.Select(i => (i.ProdutoId, i.Quantidade)).ToList();
             var command = new RegistrarPedidoCommand(request.ClienteId, itens);
 
