@@ -55,6 +55,17 @@ public sealed class PedidoTests
     }
 
     [Fact]
+    public void Rejeitar_ComMotivoVazio_Falha()
+    {
+        var pedido = Pedido.Registrar(ClienteId, [(Guid.NewGuid(), 1)]);
+        pedido.IniciarValidacao();
+
+        var rejeitar = () => pedido.Rejeitar(" ");
+
+        rejeitar.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
     public void ConfirmarReserva_SemPassarPorValidando_Falha()
     {
         var pedido = Pedido.Registrar(ClienteId, [(Guid.NewGuid(), 1)]);
