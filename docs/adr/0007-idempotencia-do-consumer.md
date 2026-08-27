@@ -38,10 +38,18 @@ parte do modelo do outbox — ADR-0003), mas não é usada: nenhum consumer est�
 configurado pra gravar nela, é um artefato inerte do modelo compartilhado do
 MassTransit.
 
+A guarda de `Status` sozinha não fecha a janela entre duas entregas **concorrentes**
+(não apenas sequenciais): ambas podem ler `Status == Recebido` antes de qualquer uma
+salvar. Quem perde a corrida esbarra no `rowversion` otimista (ADR-0004) e recebe
+`DbUpdateConcurrencyException` — o consumer trata esse conflito especificamente como o
+mesmo no-op, não como falha a reprocessar/mandar pra fila de erro.
+
 ## Consequências
 
-- Reprocessar `PedidoRecebido` é seguro: primeira entrega aplica a transição, qualquer
-  entrega repetida é um no-op observável, sem exceção.
+- Reprocessar `PedidoRecebido` é seguro, sequencial ou concorrente: primeira entrega (a
+  que ganha a corrida, se houver disputa) aplica a transição; qualquer entrega repetida
+  é um no-op observável, via guarda de `Status` ou via `DbUpdateConcurrencyException`
+  capturada — nunca uma exceção não tratada indo pra fila de erro do broker.
 - **Negativa, aceita:** essa estratégia só funciona porque o efeito é uma transição de
   estado idempotente por construção. Um efeito colateral não-idempotente — por exemplo,
   a chamada SOAP de reserva de estoque que a ZER-183 vai adicionar — não pode reusar a

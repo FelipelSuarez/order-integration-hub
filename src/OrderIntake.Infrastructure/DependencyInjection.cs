@@ -27,11 +27,18 @@ public static class DependencyInjection
 
             x.AddConsumer<PedidoRecebidoConsumer>();
 
-            if (configuration["Messaging:Transport"] == "AzureServiceBus")
+            if (string.Equals(configuration["Messaging:Transport"], "AzureServiceBus", StringComparison.OrdinalIgnoreCase))
             {
+                var azureServiceBusConnectionString = configuration.GetConnectionString("AzureServiceBus");
+                if (string.IsNullOrWhiteSpace(azureServiceBusConnectionString))
+                {
+                    throw new InvalidOperationException(
+                        "Messaging:Transport=AzureServiceBus exige ConnectionStrings:AzureServiceBus configurada.");
+                }
+
                 x.UsingAzureServiceBus((context, cfg) =>
                 {
-                    cfg.Host(configuration.GetConnectionString("AzureServiceBus"));
+                    cfg.Host(azureServiceBusConnectionString);
                     cfg.ConfigureEndpoints(context);
                 });
             }
