@@ -26,17 +26,29 @@ public sealed class PedidoRecebidoMessagingTests(SqlServerContainerFixture fixtu
 
         var request = new RegistrarPedidoRequest(Guid.NewGuid(), [new ItemRequest(Guid.NewGuid(), 2)]);
         var response = await client.PostAsJsonAsync("/pedidos", request);
+        response.EnsureSuccessStatusCode();
+
         var body = await response.Content.ReadFromJsonAsync<RegistrarPedidoResponse>();
+        body.Should().NotBeNull();
 
         var pedido = await AguardarStatusAsync(factory, body!.PedidoId, Status.Validando);
         pedido.Status.Should().Be(Status.Validando);
 
         using var scope = factory.Services.CreateScope();
-        var publishEndpoint = scope.ServiceProvider.GetRequiredService<IPublishEndpoint>();
-        await publishEndpoint.Publish(new PedidoRecebido(pedido.Id, pedido.ClienteId, DateTimeOffset.UtcNow));
+        var bus = scope.ServiceProvider.GetRequiredService<IBus>();
 
-        // Dá tempo do consumer reprocessar a reentrega antes de reafirmar o estado.
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        // Observa o consumo de verdade da reentrega — sem isso, o teste passaria mesmo
+        // que o consumer não estivesse rodando, já que o Status já é Validando.
+        var reentregaConsumida = new PedidoRecebidoConsumeObserver(pedido.Id);
+        using var observerHandle = bus.ConnectConsumeObserver(reentregaConsumida);
+
+        // Publica direto no IBus, não no IPublishEndpoint resolvido por escopo: esse
+        // último é o outbox-aware (ADR-0003) e só entrega quando SaveChangesAsync roda
+        // no DbContext do mesmo escopo — não é o caso aqui, e não é o que se quer
+        // simular (redelivery é o broker reentregando, não a aplicação republicando).
+        await bus.Publish(new PedidoRecebido(pedido.Id, pedido.ClienteId, DateTimeOffset.UtcNow));
+
+        await reentregaConsumida.WaitAsync(TimeSpan.FromSeconds(30));
 
         var pedidoAposReentrega = await ObterPedidoAsync(factory, pedido.Id);
         pedidoAposReentrega!.Status.Should().Be(Status.Validando);
@@ -69,5 +81,47 @@ public sealed class PedidoRecebidoMessagingTests(SqlServerContainerFixture fixtu
         var context = scope.ServiceProvider.GetRequiredService<OrderIntakeDbContext>();
 
         return await context.Pedidos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == pedidoId);
+    }
+
+    /// <summary>
+    /// Sinaliza quando o broker efetivamente entrega e o consumer processa (com sucesso
+    /// ou não) o PedidoRecebido do PedidoId observado — prova consumo real da reentrega,
+    /// não apenas ausência de mudança de estado.
+    /// </summary>
+    private sealed class PedidoRecebidoConsumeObserver(Guid pedidoId) : IConsumeObserver
+    {
+        private readonly TaskCompletionSource _consumido = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task WaitAsync(TimeSpan timeout)
+        {
+            using var cts = new CancellationTokenSource(timeout);
+            await using (cts.Token.Register(() => _consumido.TrySetException(
+                new TimeoutException($"Reentrega de PedidoRecebido para {pedidoId} não foi consumida a tempo."))))
+            {
+                await _consumido.Task;
+            }
+        }
+
+        public Task PreConsume<T>(ConsumeContext<T> context) where T : class => Task.CompletedTask;
+
+        public Task PostConsume<T>(ConsumeContext<T> context) where T : class
+        {
+            if (context.Message is PedidoRecebido mensagem && mensagem.PedidoId == pedidoId)
+            {
+                _consumido.TrySetResult();
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task ConsumeFault<T>(ConsumeContext<T> context, Exception exception) where T : class
+        {
+            if (context.Message is PedidoRecebido mensagem && mensagem.PedidoId == pedidoId)
+            {
+                _consumido.TrySetResult();
+            }
+
+            return Task.CompletedTask;
+        }
     }
 }

@@ -5,7 +5,7 @@ using OrderIntake.IntegrationTests.Infrastructure;
 
 namespace OrderIntake.IntegrationTests.Pedidos;
 
-[Collection(nameof(IntegrationCollection))]
+[Collection(nameof(SqlServerCollection))]
 public sealed class PedidoConcorrenciaTests(SqlServerContainerFixture fixture)
 {
     [Fact]
