@@ -44,7 +44,9 @@ public sealed class PedidoRecebidoMessagingTests(SqlServerContainerFixture fixtu
 
     private static async Task<Pedido> AguardarStatusAsync(OrderIntakeApiFactory factory, Guid pedidoId, Status statusEsperado)
     {
-        var limite = DateTime.UtcNow.AddSeconds(30);
+        // 60s: folga generosa pra primeira execução numa máquina limpa, onde a imagem do
+        // RabbitMQ ainda não está em cache local e o pull compete com o resto da suíte.
+        var limite = DateTime.UtcNow.AddSeconds(60);
 
         while (DateTime.UtcNow < limite)
         {
