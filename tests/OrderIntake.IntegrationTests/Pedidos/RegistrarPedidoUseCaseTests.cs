@@ -1,4 +1,6 @@
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using OrderIntake.Application.Pedidos;
 using OrderIntake.Domain.Pedidos;
 using OrderIntake.Infrastructure.Persistence;
@@ -6,7 +8,7 @@ using OrderIntake.IntegrationTests.Infrastructure;
 
 namespace OrderIntake.IntegrationTests.Pedidos;
 
-[Collection(nameof(SqlServerCollection))]
+[Collection(nameof(IntegrationCollection))]
 public sealed class RegistrarPedidoUseCaseTests(SqlServerContainerFixture fixture)
 {
     [Fact]
@@ -19,12 +21,28 @@ public sealed class RegistrarPedidoUseCaseTests(SqlServerContainerFixture fixtur
         var clienteId = Guid.NewGuid();
         var itens = new List<(Guid ProdutoId, int Quantidade)> { (Guid.NewGuid(), 3), (Guid.NewGuid(), 1) };
 
+        // Este teste cobre persistência, não mensageria (isso é o
+        // PedidoRecebidoMessagingTests) — um bus em memória basta pra satisfazer
+        // IPublishEndpoint sem depender de RabbitMQ de verdade.
+        await using var busProvider = new ServiceCollection()
+            .AddMassTransit(x => x.UsingInMemory())
+            .BuildServiceProvider();
+        var busControl = busProvider.GetRequiredService<IBusControl>();
+        await busControl.StartAsync();
+
         Pedido pedido;
 
-        await using (var context = new OrderIntakeDbContext(options))
+        try
         {
-            var useCase = new RegistrarPedidoUseCase(new PedidoRepository(context));
-            pedido = await useCase.ExecutarAsync(new RegistrarPedidoCommand(clienteId, itens), CancellationToken.None);
+            await using (var context = new OrderIntakeDbContext(options))
+            {
+                var useCase = new RegistrarPedidoUseCase(new PedidoRepository(context, busControl));
+                pedido = await useCase.ExecutarAsync(new RegistrarPedidoCommand(clienteId, itens), CancellationToken.None);
+            }
+        }
+        finally
+        {
+            await busControl.StopAsync();
         }
 
         await using var readContext = new OrderIntakeDbContext(options);

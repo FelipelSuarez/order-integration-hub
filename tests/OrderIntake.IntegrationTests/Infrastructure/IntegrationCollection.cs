@@ -1,4 +1,4 @@
 namespace OrderIntake.IntegrationTests.Infrastructure;
 
-[CollectionDefinition(nameof(SqlServerCollection))]
-public sealed class SqlServerCollection : ICollectionFixture<SqlServerContainerFixture>;
+[CollectionDefinition(nameof(IntegrationCollection))]
+public sealed class IntegrationCollection : ICollectionFixture<SqlServerContainerFixture>, ICollectionFixture<RabbitMqContainerFixture>;
