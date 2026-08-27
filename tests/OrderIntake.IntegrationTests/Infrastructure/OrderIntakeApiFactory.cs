@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace OrderIntake.IntegrationTests.Infrastructure;
 
-public sealed class OrderIntakeApiFactory(string connectionString) : WebApplicationFactory<Program>
+public sealed class OrderIntakeApiFactory(string connectionString, string rabbitMqConnectionString) : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -13,6 +13,7 @@ public sealed class OrderIntakeApiFactory(string connectionString) : WebApplicat
             configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:OrderIntakeDb"] = connectionString,
+                ["ConnectionStrings:RabbitMq"] = rabbitMqConnectionString,
             });
         });
     }

@@ -55,8 +55,6 @@ específico, em três níveis:
 O que fica deliberadamente fora, por enquanto:
 
 - **Integração SOAP com o legado** — o proxy ainda não existe (ZER-162).
-- **Outbox/MassTransit** — a publicação transacional de eventos ainda não foi
-  implementada (ADR-0003 documenta a decisão, não o código).
 - **`OrderProjection`/MongoDB** — read model desnormalizado, fora do escopo desta leva
   de testes.
 - **Carga e performance** — `tools/OrderIntake.SeedData` existe pra alimentar os testes

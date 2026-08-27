@@ -7,13 +7,13 @@ using OrderIntake.IntegrationTests.Infrastructure;
 
 namespace OrderIntake.IntegrationTests.Pedidos;
 
-[Collection(nameof(SqlServerCollection))]
-public sealed class PedidosEndpointTests(SqlServerContainerFixture fixture)
+[Collection(nameof(IntegrationCollection))]
+public sealed class PedidosEndpointTests(SqlServerContainerFixture fixture, RabbitMqContainerFixture rabbitMqFixture)
 {
     [Fact]
     public async Task PostPedidos_ComPayloadValido_Retorna202EPersisteOPedido()
     {
-        await using var factory = new OrderIntakeApiFactory(fixture.ConnectionString);
+        await using var factory = new OrderIntakeApiFactory(fixture.ConnectionString, rabbitMqFixture.ConnectionString);
         using var client = factory.CreateClient();
 
         var request = new RegistrarPedidoRequest(Guid.NewGuid(), [new ItemRequest(Guid.NewGuid(), 2)]);
@@ -37,7 +37,7 @@ public sealed class PedidosEndpointTests(SqlServerContainerFixture fixture)
     [Fact]
     public async Task PostPedidos_SemItens_Retorna400()
     {
-        await using var factory = new OrderIntakeApiFactory(fixture.ConnectionString);
+        await using var factory = new OrderIntakeApiFactory(fixture.ConnectionString, rabbitMqFixture.ConnectionString);
         using var client = factory.CreateClient();
 
         var request = new RegistrarPedidoRequest(Guid.NewGuid(), []);
@@ -50,7 +50,7 @@ public sealed class PedidosEndpointTests(SqlServerContainerFixture fixture)
     [Fact]
     public async Task PostPedidos_ComItensNulo_Retorna400EmVezDe500()
     {
-        await using var factory = new OrderIntakeApiFactory(fixture.ConnectionString);
+        await using var factory = new OrderIntakeApiFactory(fixture.ConnectionString, rabbitMqFixture.ConnectionString);
         using var client = factory.CreateClient();
 
         var request = new RegistrarPedidoRequest(Guid.NewGuid(), null!);
