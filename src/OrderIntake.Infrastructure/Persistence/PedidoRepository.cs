@@ -1,7 +1,9 @@
 using System.Data;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using OrderIntake.Application.Pedidos;
 using OrderIntake.Domain.Pedidos;
+using Shared.Contracts.Pedidos.V1;
 
 namespace OrderIntake.Infrastructure.Persistence;
 
@@ -12,13 +14,18 @@ namespace OrderIntake.Infrastructure.Persistence;
 /// concorrência real — transições de Status do mesmo Pedido — é protegida por
 /// rowversion otimista, não por isolamento mais forte.
 /// </summary>
-public sealed class PedidoRepository(OrderIntakeDbContext context) : IPedidoRepository
+public sealed class PedidoRepository(OrderIntakeDbContext context, IPublishEndpoint publishEndpoint) : IPedidoRepository
 {
     public async Task AdicionarAsync(Pedido pedido, CancellationToken cancellationToken)
     {
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
         context.Pedidos.Add(pedido);
+
+        // Publicado antes do SaveChangesAsync: dentro do outbox do MassTransit (ADR-0003),
+        // isso grava na tabela OutboxMessage nesta mesma transação, não na rede.
+        await publishEndpoint.Publish(new PedidoRecebido(pedido.Id, pedido.ClienteId, DateTimeOffset.UtcNow), cancellationToken);
+
         await context.SaveChangesAsync(cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
