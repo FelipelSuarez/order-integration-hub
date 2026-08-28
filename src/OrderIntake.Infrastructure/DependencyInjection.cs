@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OrderIntake.Application.Pedidos;
+using OrderIntake.Infrastructure.Legado;
 using OrderIntake.Infrastructure.Messaging;
 using OrderIntake.Infrastructure.Persistence;
 
@@ -16,6 +17,9 @@ public static class DependencyInjection
             options.UseSqlServer(configuration.GetConnectionString("OrderIntakeDb")));
 
         services.AddScoped<IPedidoRepository, PedidoRepository>();
+
+        services.AddSingleton<ILegadoPedidoGateway>(_ =>
+            new LegadoPedidoGateway(configuration["Legado:EnderecoServico"] ?? "http://localhost:5236/ServicoLegado.svc"));
 
         services.AddMassTransit(x =>
         {
