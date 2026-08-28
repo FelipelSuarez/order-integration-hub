@@ -15,9 +15,20 @@ namespace OrderIntake.Infrastructure.Legado;
 /// tipo de System.ServiceModel atravessa para fora desta classe: sucesso e recusa viram
 /// <see cref="ResultadoLegado"/>, falha técnica vira <see cref="LegadoIndisponivelException"/>.
 /// </summary>
-public sealed class LegadoPedidoGateway(string enderecoServico) : ILegadoPedidoGateway
+public sealed class LegadoPedidoGateway : ILegadoPedidoGateway
 {
-    private readonly ResiliencePipeline<ValidarEReservarPedidoResponse> _pipeline = ConstruirPipeline();
+    private readonly string _enderecoServico;
+    private readonly CircuitBreakerStateProvider _estadoCircuito = new();
+    private readonly ResiliencePipeline<ValidarEReservarPedidoResponse> _pipeline;
+
+    public LegadoPedidoGateway(string enderecoServico, LegadoResiliencePipelineOptions? opcoesResiliencia = null)
+    {
+        _enderecoServico = enderecoServico;
+        _pipeline = ConstruirPipeline(opcoesResiliencia ?? LegadoResiliencePipelineOptions.Padrao, _estadoCircuito);
+    }
+
+    /// <summary>Exposto só para observação em teste — não faz parte da porta da Application.</summary>
+    public CircuitState CircuitState => _estadoCircuito.CircuitState;
 
     public async Task<ResultadoLegado> ValidarEReservarAsync(
         Guid clienteId,
@@ -35,7 +46,7 @@ public sealed class LegadoPedidoGateway(string enderecoServico) : ILegadoPedidoG
         try
         {
             var response = await _pipeline.ExecuteAsync(
-                (ct) => new ValueTask<ValidarEReservarPedidoResponse>(ChamarLegadoAsync(enderecoServico, request, ct)),
+                (ct) => new ValueTask<ValidarEReservarPedidoResponse>(ChamarLegadoAsync(_enderecoServico, request, ct)),
                 cancellationToken);
 
             return response.Aprovado
@@ -61,22 +72,9 @@ public sealed class LegadoPedidoGateway(string enderecoServico) : ILegadoPedidoG
         }
         finally
         {
-            await FecharAsync(client);
-        }
-    }
-
-    private static async Task FecharAsync(ServicoLegadoClient client)
-    {
-        try
-        {
-            await client.CloseAsync();
-        }
-        catch (CommunicationException)
-        {
-            client.Abort();
-        }
-        catch (TimeoutException)
-        {
+            // Abort (não CloseAsync): BasicHttpBinding não tem sessão e o cliente é
+            // descartado após esta chamada — negociar um close gracioso só arrisca travar
+            // dentro da janela de timeout/circuit breaker do Polly sem nenhum ganho real.
             client.Abort();
         }
     }
@@ -84,7 +82,8 @@ public sealed class LegadoPedidoGateway(string enderecoServico) : ILegadoPedidoG
     private static bool EhFalhaTecnica(Exception ex) =>
         ex is BrokenCircuitException or FaultException or CommunicationException or TimeoutException or TimeoutRejectedException;
 
-    private static ResiliencePipeline<ValidarEReservarPedidoResponse> ConstruirPipeline()
+    private static ResiliencePipeline<ValidarEReservarPedidoResponse> ConstruirPipeline(
+        LegadoResiliencePipelineOptions opcoes, CircuitBreakerStateProvider estadoCircuito)
     {
         var falhaTecnica = new PredicateBuilder<ValidarEReservarPedidoResponse>()
             .Handle<FaultException>()
@@ -95,20 +94,21 @@ public sealed class LegadoPedidoGateway(string enderecoServico) : ILegadoPedidoG
             .AddRetry(new RetryStrategyOptions<ValidarEReservarPedidoResponse>
             {
                 ShouldHandle = falhaTecnica,
-                MaxRetryAttempts = 3,
+                MaxRetryAttempts = opcoes.MaxRetryAttempts,
                 BackoffType = DelayBackoffType.Exponential,
-                Delay = TimeSpan.FromMilliseconds(200),
+                Delay = opcoes.RetryDelay,
                 UseJitter = true,
             })
             .AddCircuitBreaker(new CircuitBreakerStrategyOptions<ValidarEReservarPedidoResponse>
             {
                 ShouldHandle = falhaTecnica,
-                FailureRatio = 0.5,
-                MinimumThroughput = 4,
-                SamplingDuration = TimeSpan.FromSeconds(10),
-                BreakDuration = TimeSpan.FromSeconds(15),
+                FailureRatio = opcoes.FailureRatio,
+                MinimumThroughput = opcoes.MinimumThroughput,
+                SamplingDuration = opcoes.SamplingDuration,
+                BreakDuration = opcoes.BreakDuration,
+                StateProvider = estadoCircuito,
             })
-            .AddTimeout(TimeSpan.FromSeconds(2))
+            .AddTimeout(opcoes.TimeoutPorTentativa)
             .Build();
     }
 }
