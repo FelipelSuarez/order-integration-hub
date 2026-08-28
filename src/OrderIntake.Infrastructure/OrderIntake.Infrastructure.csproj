@@ -1,5 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <!-- CS0108: o ClientBase<T> gerado pelo dotnet-svcutil (Legado/Gerado) esconde
+         ClientBase.CloseAsync() de propósito (implementação do contrato SOAP). O arquivo é
+         gerado e nunca editado à mão (AGENTS.md), então a supressão fica no projeto. -->
+    <NoWarn>$(NoWarn);CS0108</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="MassTransit" Version="8.3.3" />
     <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.3.3" />
@@ -10,6 +17,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.11" />
+    <PackageReference Include="System.ServiceModel.Http" Version="10.0.652802" />
+    <PackageReference Include="System.ServiceModel.Primitives" Version="10.0.652802" />
+    <!-- Pina a transitiva de System.ServiceModel.Http para a versão sem a CVE reportada em GHSA-23rf-6693-g89p (entre outras). -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup>
