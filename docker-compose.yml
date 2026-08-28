@@ -7,3 +7,10 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+
+  legado-erp-fake:
+    build:
+      context: .
+      dockerfile: tools/LegadoErp.Fake/Dockerfile
+    ports:
+      - "5236:8080"
