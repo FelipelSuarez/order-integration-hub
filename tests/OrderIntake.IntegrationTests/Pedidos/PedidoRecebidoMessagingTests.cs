@@ -1,10 +1,8 @@
 using System.Net.Http.Json;
 using MassTransit;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OrderIntake.Api.Pedidos;
 using OrderIntake.Domain.Pedidos;
-using OrderIntake.Infrastructure.Persistence;
 using OrderIntake.IntegrationTests.Infrastructure;
 using Shared.Contracts.Pedidos.V1;
 
@@ -31,7 +29,7 @@ public sealed class PedidoRecebidoMessagingTests(SqlServerContainerFixture fixtu
         var body = await response.Content.ReadFromJsonAsync<RegistrarPedidoResponse>();
         body.Should().NotBeNull();
 
-        var pedido = await AguardarStatusAsync(factory, body!.PedidoId, Status.Validando);
+        var pedido = await PedidoAguardo.AguardarStatusAsync(factory, body!.PedidoId, Status.Validando);
         pedido.Status.Should().Be(Status.Validando);
 
         using var scope = factory.Services.CreateScope();
@@ -50,37 +48,8 @@ public sealed class PedidoRecebidoMessagingTests(SqlServerContainerFixture fixtu
 
         await reentregaConsumida.WaitAsync(TimeSpan.FromSeconds(30));
 
-        var pedidoAposReentrega = await ObterPedidoAsync(factory, pedido.Id);
+        var pedidoAposReentrega = await PedidoAguardo.ObterPedidoAsync(factory, pedido.Id);
         pedidoAposReentrega!.Status.Should().Be(Status.Validando);
-    }
-
-    private static async Task<Pedido> AguardarStatusAsync(OrderIntakeApiFactory factory, Guid pedidoId, Status statusEsperado)
-    {
-        // 60s: folga generosa pra primeira execução numa máquina limpa, onde a imagem do
-        // RabbitMQ ainda não está em cache local e o pull compete com o resto da suíte.
-        var limite = DateTime.UtcNow.AddSeconds(60);
-
-        while (DateTime.UtcNow < limite)
-        {
-            var pedido = await ObterPedidoAsync(factory, pedidoId);
-
-            if (pedido?.Status == statusEsperado)
-            {
-                return pedido;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(250));
-        }
-
-        throw new TimeoutException($"Pedido {pedidoId} não chegou a {statusEsperado} a tempo.");
-    }
-
-    private static async Task<Pedido?> ObterPedidoAsync(OrderIntakeApiFactory factory, Guid pedidoId)
-    {
-        using var scope = factory.Services.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<OrderIntakeDbContext>();
-
-        return await context.Pedidos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == pedidoId);
     }
 
     /// <summary>

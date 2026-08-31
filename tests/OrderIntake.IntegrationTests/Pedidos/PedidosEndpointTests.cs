@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using OrderIntake.Api.Pedidos;
+using OrderIntake.Domain.Pedidos;
 using OrderIntake.Infrastructure.Persistence;
 using OrderIntake.IntegrationTests.Infrastructure;
 
@@ -32,6 +33,13 @@ public sealed class PedidosEndpointTests(SqlServerContainerFixture fixture, Rabb
         var persistido = await context.Pedidos.FindAsync(body.PedidoId);
 
         persistido.Should().NotBeNull();
+
+        // Espera o outbox entregar antes de sair: a entrega é assíncrona (background), e
+        // descartar o factory antes dela terminar derruba o host no meio do processamento
+        // da própria mensagem que este teste acabou de gerar — ObjectDisposedException no
+        // consumer, não neste teste (que já passou), mas potencialmente noutro teste que
+        // dependa da mesma fila.
+        await PedidoAguardo.AguardarStatusAsync(factory, body.PedidoId, Status.Validando);
     }
 
     [Fact]

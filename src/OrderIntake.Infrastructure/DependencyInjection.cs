@@ -31,6 +31,17 @@ public static class DependencyInjection
 
             x.AddConsumer<PedidoRecebidoConsumer>();
 
+            // Só definido em teste (OrderIntakeApiFactory): cada host de teste cria seu
+            // próprio bus contra o mesmo broker compartilhado (RabbitMqContainerFixture).
+            // Sem um prefixo próprio, todos bindariam a mesma fila (nome deriva do tipo do
+            // consumer) e virariam consumers concorrentes — mensagem de um teste podia ser
+            // entregue ao host (já sendo descartado) de outro teste.
+            var endpointNamePrefix = configuration["Messaging:EndpointNamePrefix"];
+            if (!string.IsNullOrWhiteSpace(endpointNamePrefix))
+            {
+                x.SetEndpointNameFormatter(new KebabCaseEndpointNameFormatter(endpointNamePrefix, includeNamespace: false));
+            }
+
             if (string.Equals(configuration["Messaging:Transport"], "AzureServiceBus", StringComparison.OrdinalIgnoreCase))
             {
                 var azureServiceBusConnectionString = configuration.GetConnectionString("AzureServiceBus");

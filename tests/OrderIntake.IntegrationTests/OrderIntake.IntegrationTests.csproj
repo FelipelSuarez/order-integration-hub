@@ -22,6 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\OrderIntake.Infrastructure\OrderIntake.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\OrderIntake.Api\OrderIntake.Api.csproj" />
     <!-- Alias: LegadoErp.Fake e OrderIntake.Api têm, cada um, sua própria classe Program
