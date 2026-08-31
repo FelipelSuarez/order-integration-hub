@@ -55,14 +55,25 @@ public static class DependencyInjection
                     r.UseSqlServer();
                 });
 
-            x.AddDelayedMessageScheduler();
-
             // Dedupe por MessageId (InboxState — existe no schema desde a ZER-161, inerte
             // até aqui). A guarda de Status usada pelo antigo PedidoRecebidoConsumer
             // (ADR-0007) não é suficiente pra saga: reentrega de um evento que a saga
             // processaria de novo no MESMO estado (ex.: ReavaliarPedido enquanto ainda em
             // Validando) chamaria o legado — efeito colateral não-idempotente — outra vez.
-            x.AddConfigureEndpointsCallback((context, _, cfg) => cfg.UseEntityFrameworkOutbox<OrderIntakeDbContext>(context));
+            //
+            // UseMessageRetry é o que torna o dedupe seguro sob concorrência de verdade,
+            // não só cosmético: duas entregas com o mesmo MessageId chegando ao mesmo tempo
+            // podem correr pra inserir a MESMA linha em InboxState — uma delas esbarra na
+            // unique constraint (AK_InboxState_MessageId_ConsumerId) e sem retry aqui essa
+            // exceção de banco vaza como falha não tratada em vez de ser reabsorvida (a
+            // perdedora da corrida re-tenta e aí sim vê "já consumido", sem efeito). Achado
+            // tentando escrever um teste de reentrega concorrente (ADR-0011) — o teste em si
+            // não ficou determinístico o bastante pra entrar na suíte, mas a correção fica.
+            x.AddConfigureEndpointsCallback((context, _, cfg) =>
+            {
+                cfg.UseEntityFrameworkOutbox<OrderIntakeDbContext>(context);
+                cfg.UseMessageRetry(r => r.Intervals(50, 100, 200, 500));
+            });
 
             // Só definido em teste (OrderIntakeApiFactory): cada host de teste cria seu
             // próprio bus contra o mesmo broker compartilhado (RabbitMqContainerFixture).
@@ -87,14 +98,20 @@ public static class DependencyInjection
                 x.UsingAzureServiceBus((context, cfg) =>
                 {
                     cfg.Host(azureServiceBusConnectionString);
-                    // ASB agenda nativamente (ScheduledEnqueueTimeUtc) — UseDelayedMessageScheduler
-                    // é o mecanismo do RabbitMQ (plugin de delayed exchange), não funciona aqui.
+                    // ASB agenda nativamente (ScheduledEnqueueTimeUtc); AddDelayedMessageScheduler
+                    // registra a infra do scheduler genérico do RabbitMQ (plugin de delayed
+                    // exchange) — não deve ser registrado neste transporte.
                     cfg.UseServiceBusMessageScheduler();
                     cfg.ConfigureEndpoints(context);
                 });
             }
             else
             {
+                // Só o RabbitMq precisa da infra genérica de scheduler (o plugin de delayed
+                // exchange, ver docker-compose.yml/RabbitMqContainerFixture) — registrar pro
+                // ASB não teria efeito útil, já que ele usa UseServiceBusMessageScheduler acima.
+                x.AddDelayedMessageScheduler();
+
                 x.UsingRabbitMq((context, cfg) =>
                 {
                     var connectionString = configuration.GetConnectionString("RabbitMq") ?? "amqp://guest:guest@localhost:5672/";

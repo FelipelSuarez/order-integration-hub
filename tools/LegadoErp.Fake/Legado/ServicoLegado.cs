@@ -12,6 +12,8 @@ public sealed class ServicoLegado(EstadoLegado estado) : IServicoLegado
 
     public Task<ValidarEReservarPedidoResponse> ValidarEReservarPedido(ValidarEReservarPedidoRequest request)
     {
+        estado.RegistrarChamada();
+
         if (estado.Indisponivel)
         {
             throw new InvalidOperationException("Legado indisponível (modo de simulação ligado).");

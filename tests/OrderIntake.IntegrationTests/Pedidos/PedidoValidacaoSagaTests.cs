@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using MassTransit;
+using Microsoft.Extensions.DependencyInjection;
 using OrderIntake.Api.Pedidos;
 using OrderIntake.Domain.Pedidos;
 using OrderIntake.Infrastructure.Sagas;
@@ -115,6 +117,32 @@ public sealed class PedidoValidacaoSagaTests : IAsyncLifetime
         {
             await _legadoFake.SimularIndisponibilidadeAsync(ativo: false);
         }
+    }
+
+    [Fact]
+    public async Task ReavaliacaoAtrasadaAposResolvido_NaoChamaOLegadoDeNovo()
+    {
+        await using var factory = CriarFactory();
+        using var client = factory.CreateClient();
+
+        var pedidoId = await RegistrarPedidoAsync(client, quantidade: 5);
+        var pedido = await PedidoAguardo.AguardarStatusAsync(factory, pedidoId, Status.Reservado);
+        pedido.Status.Should().Be(Status.Reservado);
+
+        var chamadasAposReservado = _legadoFake.ObterQuantidadeDeChamadas();
+
+        // Reentrega (ADR-0007): simula uma reavaliação atrasada chegando depois do Pedido
+        // já resolvido — DuringAny ignora sem tocar no legado de novo, em vez de estourar
+        // "evento sem handler no estado atual" ou reprocessar a decisão já tomada.
+        using var scope = factory.Services.CreateScope();
+        var bus = scope.ServiceProvider.GetRequiredService<IBus>();
+        await bus.Publish(new ReavaliarPedido(pedidoId));
+
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        _legadoFake.ObterQuantidadeDeChamadas().Should().Be(chamadasAposReservado);
+
+        var pedidoFinal = await PedidoAguardo.ObterPedidoAsync(factory, pedidoId);
+        pedidoFinal!.Status.Should().Be(Status.Reservado);
     }
 
     private static async Task<Guid> RegistrarPedidoAsync(HttpClient client, int quantidade)

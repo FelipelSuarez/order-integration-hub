@@ -72,6 +72,20 @@ Escolhida a opção que ADR-0007 já apontava: dedupe por `MessageId` via `Inbox
 habilita o inbox em todo endpoint auto-configurado, sem exigir endpoint explícito só
 para a saga.
 
+`UseMessageRetry` no mesmo callback não é cosmético: duas entregas com o mesmo
+`MessageId` chegando perto uma da outra podem correr pra inserir a mesma linha em
+`InboxState` — uma esbarra na unique constraint (`AK_InboxState_MessageId_ConsumerId`),
+e sem retry aqui essa exceção de banco vazava como falha não tratada em vez de ser
+reabsorvida (achado tentando escrever o teste desta seção).
+
+**Negativa, aceita:** não há teste automatizado da corrida concorrente em si — publicar
+manualmente a mesma mensagem duas vezes com `MessageId` forçado não reproduziu o mesmo
+caminho que uma reentrega real do broker (a mesma mensagem física redelivered), e
+forçar isso artificialmente não valeu a complexidade. O teste que existe
+(`ReavaliacaoAtrasadaAposResolvido_NaoChamaOLegadoDeNovo`) prova a propriedade mais
+ampla — uma reavaliação atrasada chegando depois do Pedido já resolvido não rechama o
+legado — via `DuringAny`, não via inbox especificamente.
+
 ## Opções consideradas — consulta de status
 
 `docs/domain.md` já decidiu: consulta de status é responsabilidade do
