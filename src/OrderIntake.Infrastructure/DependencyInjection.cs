@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OrderIntake.Application.Pedidos;
+using OrderIntake.Infrastructure.Legado;
 using OrderIntake.Infrastructure.Messaging;
 using OrderIntake.Infrastructure.Persistence;
 
@@ -17,6 +18,14 @@ public static class DependencyInjection
 
         services.AddScoped<IPedidoRepository, PedidoRepository>();
 
+        var enderecoServicoLegado = configuration["Legado:EnderecoServico"];
+        if (string.IsNullOrWhiteSpace(enderecoServicoLegado))
+        {
+            throw new InvalidOperationException("Legado:EnderecoServico precisa estar configurado.");
+        }
+
+        services.AddSingleton<ILegadoPedidoGateway>(_ => new LegadoPedidoGateway(enderecoServicoLegado));
+
         services.AddMassTransit(x =>
         {
             x.AddEntityFrameworkOutbox<OrderIntakeDbContext>(o =>
@@ -26,6 +35,17 @@ public static class DependencyInjection
             });
 
             x.AddConsumer<PedidoRecebidoConsumer>();
+
+            // Só definido em teste (OrderIntakeApiFactory): cada host de teste cria seu
+            // próprio bus contra o mesmo broker compartilhado (RabbitMqContainerFixture).
+            // Sem um prefixo próprio, todos bindariam a mesma fila (nome deriva do tipo do
+            // consumer) e virariam consumers concorrentes — mensagem de um teste podia ser
+            // entregue ao host (já sendo descartado) de outro teste.
+            var endpointNamePrefix = configuration["Messaging:EndpointNamePrefix"];
+            if (!string.IsNullOrWhiteSpace(endpointNamePrefix))
+            {
+                x.SetEndpointNameFormatter(new KebabCaseEndpointNameFormatter(endpointNamePrefix, includeNamespace: false));
+            }
 
             if (string.Equals(configuration["Messaging:Transport"], "AzureServiceBus", StringComparison.OrdinalIgnoreCase))
             {

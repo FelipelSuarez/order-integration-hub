@@ -22,8 +22,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\OrderIntake.Infrastructure\OrderIntake.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\OrderIntake.Api\OrderIntake.Api.csproj" />
+    <!-- Alias: LegadoErp.Fake e OrderIntake.Api têm, cada um, sua própria classe Program
+         (top-level statements) no namespace global — sem alias, os dois WebApplicationFactory<Program>
+         colidiriam. -->
+    <ProjectReference Include="..\..\tools\LegadoErp.Fake\LegadoErp.Fake.csproj" Aliases="LegadoFake" />
   </ItemGroup>
 
 </Project>
