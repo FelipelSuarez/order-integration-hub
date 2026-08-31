@@ -88,7 +88,8 @@ public sealed class LegadoPedidoGateway : ILegadoPedidoGateway
         var falhaTecnica = new PredicateBuilder<ValidarEReservarPedidoResponse>()
             .Handle<FaultException>()
             .Handle<CommunicationException>()
-            .Handle<TimeoutException>();
+            .Handle<TimeoutException>()
+            .Handle<TimeoutRejectedException>();
 
         return new ResiliencePipelineBuilder<ValidarEReservarPedidoResponse>()
             .AddRetry(new RetryStrategyOptions<ValidarEReservarPedidoResponse>

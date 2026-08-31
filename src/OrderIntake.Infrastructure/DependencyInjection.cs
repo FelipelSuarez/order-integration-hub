@@ -18,8 +18,13 @@ public static class DependencyInjection
 
         services.AddScoped<IPedidoRepository, PedidoRepository>();
 
-        services.AddSingleton<ILegadoPedidoGateway>(_ =>
-            new LegadoPedidoGateway(configuration["Legado:EnderecoServico"] ?? "http://localhost:5236/ServicoLegado.svc"));
+        var enderecoServicoLegado = configuration["Legado:EnderecoServico"];
+        if (string.IsNullOrWhiteSpace(enderecoServicoLegado))
+        {
+            throw new InvalidOperationException("Legado:EnderecoServico precisa estar configurado.");
+        }
+
+        services.AddSingleton<ILegadoPedidoGateway>(_ => new LegadoPedidoGateway(enderecoServicoLegado));
 
         services.AddMassTransit(x =>
         {
