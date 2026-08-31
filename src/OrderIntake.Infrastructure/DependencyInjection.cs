@@ -87,7 +87,9 @@ public static class DependencyInjection
                 x.UsingAzureServiceBus((context, cfg) =>
                 {
                     cfg.Host(azureServiceBusConnectionString);
-                    cfg.UseDelayedMessageScheduler();
+                    // ASB agenda nativamente (ScheduledEnqueueTimeUtc) — UseDelayedMessageScheduler
+                    // é o mecanismo do RabbitMQ (plugin de delayed exchange), não funciona aqui.
+                    cfg.UseServiceBusMessageScheduler();
                     cfg.ConfigureEndpoints(context);
                 });
             }
