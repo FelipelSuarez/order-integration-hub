@@ -4,8 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OrderIntake.Application.Pedidos;
 using OrderIntake.Infrastructure.Legado;
-using OrderIntake.Infrastructure.Messaging;
 using OrderIntake.Infrastructure.Persistence;
+using OrderIntake.Infrastructure.Sagas;
 
 namespace OrderIntake.Infrastructure;
 
@@ -18,13 +18,24 @@ public static class DependencyInjection
 
         services.AddScoped<IPedidoRepository, PedidoRepository>();
 
-        var enderecoServicoLegado = configuration["Legado:EnderecoServico"];
-        if (string.IsNullOrWhiteSpace(enderecoServicoLegado))
+        // Leitura adiada pro momento da resolução (não no corpo de AddInfrastructure):
+        // builder.Services.AddInfrastructure(builder.Configuration) roda antes de o
+        // WebApplicationFactory de teste injetar seu override de configuração — ler
+        // "Legado:EnderecoServico" aqui, cedo, capturaria sempre o valor de
+        // appsettings.json, nunca o do teste. AddDbContext(options => ...) e
+        // AddMassTransit(x => x.UsingRabbitMq((context, cfg) => ...)) já adiam a leitura
+        // da mesma forma — não é um padrão novo neste arquivo.
+        services.AddSingleton<ILegadoPedidoGateway>(_ =>
         {
-            throw new InvalidOperationException("Legado:EnderecoServico precisa estar configurado.");
-        }
+            var enderecoServicoLegado = configuration["Legado:EnderecoServico"];
+            if (string.IsNullOrWhiteSpace(enderecoServicoLegado))
+            {
+                throw new InvalidOperationException("Legado:EnderecoServico precisa estar configurado.");
+            }
 
-        services.AddSingleton<ILegadoPedidoGateway>(_ => new LegadoPedidoGateway(enderecoServicoLegado));
+            return new LegadoPedidoGateway(enderecoServicoLegado);
+        });
+        services.AddSingleton(PedidoSagaOptions.Padrao);
 
         services.AddMassTransit(x =>
         {
@@ -34,7 +45,24 @@ public static class DependencyInjection
                 o.UseBusOutbox();
             });
 
-            x.AddConsumer<PedidoRecebidoConsumer>();
+            // ADR-0011: substitui o PedidoRecebidoConsumer (ZER-161) — a saga assume o
+            // ciclo de vida inteiro, incluindo Recebido → Validando, em vez de dividir a
+            // orquestração entre um consumer simples e algo mais adiante.
+            x.AddSagaStateMachine<PedidoValidacaoStateMachine, PedidoSagaState>()
+                .EntityFrameworkRepository(r =>
+                {
+                    r.ExistingDbContext<OrderIntakeDbContext>();
+                    r.UseSqlServer();
+                });
+
+            x.AddDelayedMessageScheduler();
+
+            // Dedupe por MessageId (InboxState — existe no schema desde a ZER-161, inerte
+            // até aqui). A guarda de Status usada pelo antigo PedidoRecebidoConsumer
+            // (ADR-0007) não é suficiente pra saga: reentrega de um evento que a saga
+            // processaria de novo no MESMO estado (ex.: ReavaliarPedido enquanto ainda em
+            // Validando) chamaria o legado — efeito colateral não-idempotente — outra vez.
+            x.AddConfigureEndpointsCallback((context, _, cfg) => cfg.UseEntityFrameworkOutbox<OrderIntakeDbContext>(context));
 
             // Só definido em teste (OrderIntakeApiFactory): cada host de teste cria seu
             // próprio bus contra o mesmo broker compartilhado (RabbitMqContainerFixture).
@@ -59,6 +87,7 @@ public static class DependencyInjection
                 x.UsingAzureServiceBus((context, cfg) =>
                 {
                     cfg.Host(azureServiceBusConnectionString);
+                    cfg.UseDelayedMessageScheduler();
                     cfg.ConfigureEndpoints(context);
                 });
             }
@@ -68,6 +97,7 @@ public static class DependencyInjection
                 {
                     var connectionString = configuration.GetConnectionString("RabbitMq") ?? "amqp://guest:guest@localhost:5672/";
                     cfg.Host(new Uri(connectionString));
+                    cfg.UseDelayedMessageScheduler();
                     cfg.ConfigureEndpoints(context);
                 });
             }
