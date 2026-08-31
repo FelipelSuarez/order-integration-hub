@@ -5,16 +5,29 @@ using OrderIntake.Api.Pedidos;
 using OrderIntake.Domain.Pedidos;
 using OrderIntake.Infrastructure.Persistence;
 using OrderIntake.IntegrationTests.Infrastructure;
+using OrderIntake.IntegrationTests.Legado;
 
 namespace OrderIntake.IntegrationTests.Pedidos;
 
 [Collection(nameof(IntegrationCollection))]
-public sealed class PedidosEndpointTests(SqlServerContainerFixture fixture, RabbitMqContainerFixture rabbitMqFixture)
+public sealed class PedidosEndpointTests(SqlServerContainerFixture fixture, RabbitMqContainerFixture rabbitMqFixture, LegadoFakeHostFixture legadoFake)
+    : IAsyncLifetime
 {
+    // Defensivo: LegadoFakeHostFixture é compartilhado por toda a IntegrationCollection
+    // (não por classe) — garante que este teste não herde um toggle de indisponibilidade
+    // deixado ligado por outra classe.
+    public Task InitializeAsync() => legadoFake.SimularIndisponibilidadeAsync(ativo: false);
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
     [Fact]
     public async Task PostPedidos_ComPayloadValido_Retorna202EPersisteOPedido()
     {
-        await using var factory = new OrderIntakeApiFactory(fixture.ConnectionString, rabbitMqFixture.ConnectionString);
+        // Endereço real do legado (não o default localhost:5236, que precisa de nada
+        // escutando pra sequer existir): sem isso, a saga precisa esgotar retry+timeout
+        // do Polly contra uma porta fechada antes de Recebido→Validando ficar visível —
+        // rápido isolado, mas some no timeout de 120s sob a contenção da suíte inteira.
+        await using var factory = new OrderIntakeApiFactory(fixture.ConnectionString, rabbitMqFixture.ConnectionString, legadoFake.EnderecoServico);
         using var client = factory.CreateClient();
 
         var request = new RegistrarPedidoRequest(Guid.NewGuid(), [new ItemRequest(Guid.NewGuid(), 2)]);

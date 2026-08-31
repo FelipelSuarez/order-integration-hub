@@ -7,10 +7,16 @@ namespace LegadoErp.Fake.Legado;
 public sealed class EstadoLegado
 {
     private volatile bool _indisponivel;
+    private int _chamadas;
 
     public bool Indisponivel
     {
         get => _indisponivel;
         set => _indisponivel = value;
     }
+
+    /// <summary>Quantas vezes ValidarEReservarPedido foi invocado — prova de dedupe em teste.</summary>
+    public int Chamadas => _chamadas;
+
+    public void RegistrarChamada() => Interlocked.Increment(ref _chamadas);
 }

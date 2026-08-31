@@ -51,6 +51,10 @@ public sealed class LegadoFakeHostFixture : IAsyncLifetime
         return Task.CompletedTask;
     }
 
+    /// <summary>Quantas vezes ValidarEReservarPedido foi invocado — prova de dedupe em teste.</summary>
+    public int ObterQuantidadeDeChamadas() =>
+        (_estado ?? throw new InvalidOperationException("Fixture não inicializada.")).Chamadas;
+
     public async Task DisposeAsync()
     {
         if (_app is not null)

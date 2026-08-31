@@ -17,11 +17,12 @@
 ## Eventos de domínio
 
 O fluxo é uma saga interna dentro do próprio `OrderIntake` — sem terceiro serviço
-(ADR-0001) e sem SOAP no request path: a API só persiste e responde; um consumer
-do MassTransit processa a validação depois.
+(ADR-0001) e sem SOAP no request path: a API só persiste e responde; uma
+`MassTransitStateMachine` (`PedidoValidacaoStateMachine`, ADR-0011) processa a
+validação depois.
 
-1. **`PedidoRecebido`** — Pedido persistido com `Status = Recebido`. Dispara o
-   consumer que entra em `Validando` e chama o legado (cliente, itens, estoque).
+1. **`PedidoRecebido`** — Pedido persistido com `Status = Recebido`. Dispara a
+   saga, que entra em `Validando` e chama o legado (cliente, itens, estoque).
 2. **`PedidoValidado`** — legado confirmou cliente e itens.
 3. **`EstoqueReservado`** — legado reteve a quantidade pedida de todos os itens
    (reserva efetivada, não só consulta de disponibilidade). `Status = Reservado`.
@@ -32,8 +33,10 @@ do MassTransit processa a validação depois.
 
 `PedidoValidado` e `EstoqueReservado` são emitidos na mesma passagem por
 `Validando` — não viram estados próprios da state machine, só eventos, para
-manter os 4 estados no máximo. Cada consumer é idempotente
-(ADR-0007): reprocessar `PedidoRecebido` não pode gerar reserva ou rejeição
+manter os 4 estados no máximo. A transição `Recebido → Validando` é idempotente
+por guarda de estado (ADR-0007); a chamada ao legado, efeito colateral
+não-idempotente, usa dedupe por `InboxState` (ADR-0011) — reprocessar
+`PedidoRecebido` ou uma reavaliação agendada não pode gerar reserva ou rejeição
 duplicada.
 
 ## Fronteira de consistência
@@ -50,8 +53,12 @@ transação grava; se a transação falhar depois, a reserva no legado pode fica
 órfã (janela aceita nesta fase; compensação fica fora de escopo por ora).
 
 **Eventual:**
-- O salto broker → consumer que dispara `Validando` (o pedido fica em `Recebido`
-  por um tempo indeterminado, ou até o timeout, enquanto aguarda o legado).
+- O salto broker → saga que dispara `Validando` (o pedido fica em `Recebido` por
+  um tempo indeterminado enquanto aguarda o broker entregar).
+- Legado indisponível durante `Validando`: a saga não rejeita nem reverte a
+  `Recebido` — permanece em `Validando` e reagenda uma nova tentativa, dentro do
+  orçamento de `PedidoSagaOptions.OrcamentoTotal` (ADR-0011). Só rejeita se esse
+  orçamento esgotar.
 - O modelo de leitura do `OrderProjection`, sempre atrasado em relação à escrita.
 
 ## Contrato REST de entrada
@@ -97,7 +104,10 @@ POST /pedidos:
 ```
 
 Consulta de status é responsabilidade do `OrderProjection` (`GET` sobre o read
-model), não do `OrderIntake`.
+model), não do `OrderIntake` — **exceto** por um `GET /pedidos/{id}` interino no
+próprio `OrderIntake` enquanto o `OrderProjection` (ZER-163) não existe (ADR-0011).
+Não é o modelo de leitura definitivo: lê direto da tabela de escrita, e é
+descontinuado quando o read model existir de verdade.
 
 ## Regra
 
