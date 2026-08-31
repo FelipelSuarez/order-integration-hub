@@ -56,19 +56,19 @@ específico, em três níveis:
 - **Integração** (`OrderIntake.IntegrationTests`) — `RegistrarPedidoUseCase` e
   `PedidoRepository` contra SQL Server real (Testcontainers), sem passar por HTTP; o
   conflito de concorrência otimista (`rowversion`) acontecendo de verdade, não
-  simulado; e `LegadoPedidoGatewayResilienceTests` contra o `LegadoErp.Fake` de
+  simulado; `LegadoPedidoGatewayResilienceTests` contra o `LegadoErp.Fake` de
   verdade (Kestrel real dentro do processo de teste, sem mock) — aprovação, recusa de
   negócio que não abre o circuito, e o circuito abrindo/recuperando quando o legado
-  fica indisponível (ADR-0006).
+  fica indisponível (ADR-0006); e `PedidoValidacaoSagaTests` — a saga de ponta a
+  ponta contra o mesmo fake real: aprovação, recusa, e o ponto central da ZER-183, a
+  saga sobrevivendo ao legado indisponível sem rejeitar o Pedido na hora (ADR-0011).
 - **Ponta a ponta** (`WebApplicationFactory`) — o contrato HTTP de `POST /pedidos` real:
   202 no caminho feliz, 400 no payload inválido, persistência confirmada no banco.
 
 O que fica deliberadamente fora, por enquanto:
 
-- **O gateway SOAP conectado à saga** — `ILegadoPedidoGateway` existe e é testado
-  isoladamente (ADR-0006), mas nenhum consumer o chama ainda; isso é escopo da
-  ZER-183.
 - **`OrderProjection`/MongoDB** — read model desnormalizado, fora do escopo desta leva
-  de testes.
+  de testes. `GET /pedidos/{id}` no `OrderIntake` é interino até ele existir
+  (ADR-0011).
 - **Carga e performance** — `tools/OrderIntake.SeedData` existe pra alimentar os testes
   de performance da S2; não é teste automatizado, é preparação de dados.
